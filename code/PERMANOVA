@@ -1,0 +1,10 @@
+
+X_combined = np.vstack([X_orig_RMBC, X_aug_RMBC])
+group_labels = ['original'] * len(X_orig_RMBC) + ['augmented'] * len(X_aug_RMBC)
+
+distance_matrix = squareform(pdist(X_combined, metric='euclidean'))
+dm = DistanceMatrix(distance_matrix, ids=[str(i) for i in range(len(group_labels))])
+
+permanova_results = permanova(dm, grouping=group_labels, permutations=999)
+print("\nPERMANOVA results:")
+print(permanova_results)
