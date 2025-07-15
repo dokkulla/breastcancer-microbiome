@@ -1,0 +1,79 @@
+# tree-based
+
+# Feature importance plot (Random Forest & Gradient Boosting & Adaboost)
+def feature_importance_plot(model, model_name, feature_names):
+    importances = model.feature_importances_
+    indices = np.argsort(importances)[::-1]
+    top_10_indices = indices[:10]
+
+    plt.figure(figsize=(10, 6))
+    plt.title(f"Feature Importances ({model_name})")
+    plt.bar(range(10), importances[top_10_indices], align="center")
+    plt.xticks(range(10), [feature_names[i] for i in top_10_indices], rotation=90)
+    plt.xlim([-1, 10])
+    plt.xlabel("Feature")
+    plt.ylabel("Importance")
+    plt.show()
+
+    # Print top 10 features
+    print(f"Top 10 features for {model_name}:")
+    for i in top_10_indices:
+        print(f"{feature_names[i]}: {importances[i]:.4f}")
+
+    return [feature_names[i] for i in top_10_indices]
+
+rf = RandomForestClassifier(random_state=seed)
+gb = GradientBoostingClassifier(random_state=seed)
+ab = AdaBoostClassifier(random_state=seed)
+
+rf.fit(X_train, y_train)
+gb.fit(X_train, y_train)
+ab.fit(X_train, y_train)
+
+feature_names = merged_data.columns[:-1]
+
+rf_top_10_features = feature_importance_plot(rf, "Random Forest", feature_names)
+gb_top_10_features = feature_importance_plot(gb, "Gradient Boosting", feature_names)
+ab_top_10_features = feature_importance_plot(ab, "AdaBoost", feature_names)
+
+
+# Non-tree based
+
+# SHapley Additive exPlanations (SHAP) for KNN
+knn = KNeighborsClassifier(n_neighbors=2)
+knn.fit(X_train, y_train)
+
+X_test_df = pd.DataFrame(X_test, columns=feature_names)
+
+explainer_knn = shap.KernelExplainer(knn.predict, X_train)
+shap_values_knn = explainer_knn.shap_values(X_test_df)
+
+shap_abs_mean = np.abs(shap_values_knn).mean(axis=0)
+top_10_indices = np.argsort(shap_abs_mean)[-10:][::-1]
+
+top_10_features = [feature_names[i] for i in top_10_indices]
+top_10_features_short = [get_family_genus(f) for f in top_10_features]
+top_10_importances = shap_abs_mean[top_10_indices]
+
+
+
+# Permutation importance
+model = GaussianNB()
+model.fit(X_train_features, y_train)
+
+result = permutation_importance(
+    model, X_test_features, y_test,
+    n_repeats=100,
+    random_state=42,
+    scoring='accuracy'
+)
+
+importance_df = pd.DataFrame({
+    'feature': taxonomy_names,
+    'importance_mean': result.importances_mean,
+    'importance_std': result.importances_std
+}).sort_values(by='importance_mean', ascending=False)
+
+print(importance_df.head(10))
+top10_df = importance_df.sort_values(by='importance_mean', ascending=False).head(10)
+top10_df = top10_df.sort_values(by='importance_mean', ascending=True)
