@@ -66,4 +66,19 @@ bsmote_sampler = BorderlineSMOTE(
 X_train_res, y_train_res = bsmote_sampler.fit_resample(X_train_for_OS, y_train_for_OS)
 
 
+--------------------------------------------------------------------------------------------------------
 
+# After oversampling
+X_train, y_trainn_original = len(X_train_for_OS)
+
+# original RMBC sample index
+original_rmbc_indices = [
+    i for i in range(n_original) if y_train[i] == 2
+]
+
+# only augmented RMBC
+X_train_filtered = np.delete(X_train, original_rmbc_indices, axis=0)
+y_train_filtered = np.delete(y_train, original_rmbc_indices, axis=0)
+
+X_train = X_train_filtered
+y_train = y_train_filtered
