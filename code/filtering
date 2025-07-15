@@ -1,0 +1,48 @@
+
+# Threshold filtering
+  
+relative_abundance_df = abundance_df.div(abundance_df.sum(axis=0), axis=1)
+
+C_samples = metadata_df[metadata_df['Group'] == 'Healthy'].index
+D_samples = metadata_df[metadata_df['Group'] == 'DFS'].index
+R_samples = metadata_df[metadata_df['Group'] == 'RMBC'].index
+
+
+threshold = 0.01
+
+significant_taxon = (relative_abundance_df > threshold).any(axis=1)
+filtered_abundance_df = relative_abundance_df.loc[significant_taxon]
+
+
+
+# Kruskal_Wallis & Benjamini-Hochberg 
+  
+kruskal_results = []
+
+
+for taxon in filtered_abundance_df.index:
+    C_data = filtered_abundance_df.loc[taxon, C_samples]
+    D_data = filtered_abundance_df.loc[taxon, D_samples]
+    R_data = filtered_abundance_df.loc[taxon, R_samples]
+
+    if len(C_data) > 0 and len(D_data) > 0 and len(R_data) > 0:
+        stat, p = kruskal(C_data, D_data, R_data)
+        kruskal_results.append({'taxon': taxon, 'stat': stat, 'p-value': p})
+
+
+kruskal_results_df = pd.DataFrame(kruskal_results)
+
+
+_, fdr_pvals, _, _ = multipletests(kruskal_results_df['p-value'], method='fdr_bh')
+kruskal_results_df['FDR p-value'] = fdr_pvals
+
+kruskal_results_df = kruskal_results_df.sort_values(by='FDR p-value')
+kruskal_results_df
+
+
+significant_df = kruskal_results_df[
+    (kruskal_results_df['p-value'] < 0.05) &
+    (kruskal_results_df['FDR p-value'] < 0.05)
+]
+
+
