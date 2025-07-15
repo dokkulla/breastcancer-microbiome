@@ -1,0 +1,69 @@
+# Label encoding categorical features
+label_encoder = LabelEncoder()
+df['Group'] = label_encoder.fit_transform(df['Group'])
+
+# Split data into features and target
+features = df.columns[:-1]
+X = df[features]
+y = df['Group']
+
+# Data split for oversampling
+X_healthy = X[y == 0]
+y_healthy = y[y == 0]
+X_DFS = X[y == 1]
+y_DFS = y[y == 1]
+X_RMBC = X[y == 2]
+y_RMBC = y[y == 2]
+
+X_healthy_train, X_healthy_test, y_healthy_train, y_healthy_test = train_test_split(X_healthy, y_healthy, test_size=0.2, random_state=42, stratify=y_healthy)
+X_DFS_train, X_DFS_test, y_DFS_train, y_DFS_test = train_test_split(X_DFS, y_DFS, test_size=0.2, random_state=42, stratify=y_DFS)
+X_RMBC_train, X_RMBC_test, y_RMBC_train, y_RMBC_test = train_test_split(X_RMBC, y_RMBC, test_size=0.2, random_state=42)
+
+X_train_for_OS = np.vstack([X_healthy_train, X_DFS_train, X_RMBC_train])
+y_train_for_OS = np.hstack([y_healthy_train, y_DFS_train, y_RMBC_train])
+
+X_train = np.vstack([X_healthy_train, X_DFS_train])
+y_train = np.hstack([y_healthy_train, y_DFS_train])
+
+X_test = np.vstack([X_healthy_test, X_DFS_test, X_RMBC])
+y_test = np.hstack([y_healthy_test, y_DFS_test, y_RMBC])
+
+
+# SMOTE
+smote = SMOTE(
+    sampling_strategy={0: len(y_train[y_train == 0]),
+                       1: len(y_train[y_train == 1]),
+                       2: len(y_RMBC_train) + 28},  
+    k_neighbors=3,
+    random_state=42
+)
+X_train, y_train = smote.fit_resample(X_train_for_OS, y_train_for_OS)
+
+
+# ADASYN
+adasyn_sampler = ADASYN(
+    sampling_strategy={0: len(y_train[y_train == 0]),
+                       1: len(y_train[y_train == 1]),
+                       2: len(y_RMBC_train) + 28},
+    n_neighbors=3,
+    random_state=42
+)
+
+X_train, y_train = adasyn_sampler.fit_resample(X_train_for_OS, y_train_for_OS)
+
+
+# Borderline_SMOTE
+bsmote_sampler = BorderlineSMOTE(
+    sampling_strategy={
+        0: len(y_train[y_train == 0]),
+        1: len(y_train[y_train == 1]),
+        2: len(y_RMBC_train) + 28  
+    },
+    k_neighbors=3,
+    random_state=42
+)
+
+X_train_res, y_train_res = bsmote_sampler.fit_resample(X_train_for_OS, y_train_for_OS)
+
+
+
