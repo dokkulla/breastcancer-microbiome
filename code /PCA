@@ -1,0 +1,57 @@
+ 
+# Dimensionality Reduction and Visualization of Data using Principal Component Analysis (PCA)
+
+pca = PCA(n_components=2)
+pca.fit(X)  
+
+X_pca_original = pca.transform(X)
+X_pca_resampled = pca.transform(X_train)
+
+def plot_pca(data, labels, title, ax):
+    unique_labels = np.unique(labels)
+    colors = {
+        0: 'skyblue',     
+        1: 'gold',        
+        2: 'plum'         
+    }
+
+    for label in unique_labels:
+        idx = (labels == label)
+        color = colors.get(label, 'gray')  
+        ax.scatter(data[idx, 0], data[idx, 1], label=f"Class {label}", alpha=0.7, color=color)
+
+    ax.set_title(title)
+    ax.set_xlabel("Principal Component 1")
+    ax.set_ylabel("Principal Component 2")
+    ax.legend()
+
+fig, axes = plt.subplots(1, 2, figsize=(11, 5))
+
+plot_pca(X_pca_original, y, "PCA: Original Data", axes[0])
+plot_pca(X_pca_resampled, y_train, "PCA: Augmented Data", axes[1])
+
+plt.tight_layout()
+plt.show()
+
+
+
+
+# PCA evaluation
+
+# central shift
+X_orig_RMBC = X_pca_original[y == 2]
+X_aug_RMBC = X_pca_resampled[y_train == 2]
+
+centroid_orig = X_orig_RMBC.mean(axis=0)
+centroid_aug = X_aug_RMBC.mean(axis=0)
+centroid_shift = np.linalg.norm(centroid_orig - centroid_aug)
+print(f"Centroid shift (RMBC): {centroid_shift:.4f}")
+
+  
+# Kolmogorov-Smirnov test
+ks_pc1 = ks_2samp(X_orig_RMBC[:, 0], X_aug_RMBC[:, 0])
+ks_pc2 = ks_2samp(X_orig_RMBC[:, 1], X_aug_RMBC[:, 1])
+
+print(f"KS Test PC1: D={ks_pc1.statistic:.4f}, p={ks_pc1.pvalue:.4f}")
+print(f"KS Test PC2: D={ks_pc2.statistic:.4f}, p={ks_pc2.pvalue:.4f}")
+
