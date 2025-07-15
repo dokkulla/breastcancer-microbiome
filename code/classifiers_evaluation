@@ -1,0 +1,171 @@
+# classifiers
+names = [
+    'Logistic Regression',
+    'Nearest Neighbors',
+    'Support Vectors',
+    'Decision Tree',
+    'Random Forest',
+    'AdaBoost',
+    'Gradient Boosting',
+    'Naive Bayes',
+    'Linear DA',
+    'Quadratic DA',
+    "Neural Net"
+]
+seed = 0
+
+classifiers = [
+    LogisticRegression(solver="liblinear", random_state=seed),
+    KNeighborsClassifier(2),
+    SVC(probability=True, random_state=seed),
+    DecisionTreeClassifier(random_state=seed),
+    RandomForestClassifier(random_state=seed),
+    AdaBoostClassifier(algorithm='SAMME', random_state=seed),
+    GradientBoostingClassifier(random_state=seed),
+    GaussianNB(),
+    LinearDiscriminantAnalysis(),
+    QuadraticDiscriminantAnalysis(store_covariance=True),
+    MLPClassifier(random_state=seed, max_iter=500),
+]
+
+
+
+def score_summary(names, classifiers, X_train, y_train, X_test, y_test):
+    cols = ["Classifier", "Accuracy", "Macro ROC_AUC", "Recall", "Precision", "F1", "MCC"]
+    data_table = pd.DataFrame(columns=cols)
+
+    for name, clf in zip(names, classifiers):
+        try:
+            clf.fit(X_train, y_train)
+            pred = clf.predict(X_test)
+
+            accuracy = accuracy_score(y_test, pred)
+
+            if hasattr(clf, "predict_proba"):
+                pred_proba = clf.predict_proba(X_test)
+            else:
+                pred_proba = clf.decision_function(X_test)
+                if pred_proba.ndim == 1:
+                    pred_proba = np.vstack([1 - pred_proba, pred_proba]).T
+
+            # always use macro average AUC for fair comparison
+            roc_auc = roc_auc_score(y_test, pred_proba, multi_class='ovo', average='macro')
+
+            recall = recall_score(y_test, pred, average='macro')
+            precision = precision_score(y_test, pred, average='macro')
+            f1 = f1_score(y_test, pred, average='macro')
+            mcc = matthews_corrcoef(y_test, pred)
+
+            df = pd.DataFrame([[name, accuracy * 100, roc_auc, recall, precision, f1, mcc]], columns=cols)
+            if not df.isna().all(axis=None):
+                data_table = pd.concat([data_table, df], ignore_index=True)
+
+        except Exception as e:
+            print(f"Classifier {name} failed: {e}")
+
+    return np.round(data_table.reset_index(drop=True), 2)
+
+
+def roc_auc_curve(names, classifiers):
+    plt.figure(figsize=(8, 5))
+
+    # Generate a color palette with enough unique colors
+    colors = plt.cm.get_cmap('tab20', len(names))
+
+    # List to store results for sorting
+    results = []
+
+    for i, (name, clf) in enumerate(zip(names, classifiers)):
+        try:
+            clf.fit(X_train, y_train)
+            if hasattr(clf, "predict_proba"):
+                pred_proba = clf.predict_proba(X_test)
+            else:
+                pred_proba = clf.decision_function(X_test)
+
+            # Calculate macro average ROC AUC for multi-class
+            roc_auc = roc_auc_score(y_test, pred_proba, multi_class='ovo', average='macro')
+
+            # Compute FPR and TPR for the average representation
+            fpr, tpr, _ = roc_curve(y_test, pred_proba[:, 1], pos_label=1)
+
+            # Store results for sorting
+            results.append((roc_auc, name, fpr, tpr))
+        except Exception as e:
+            print(f"Classifier {name} failed: {e}")
+
+    # Sort results by ROC AUC in descending order
+    results.sort(reverse=True, key=lambda x: x[0])
+
+    # Plot each ROC curve in sorted order
+    for i, (roc_auc, name, fpr, tpr) in enumerate(results):
+        plt.plot(fpr, tpr, lw=2, label=f'{name} (area = {roc_auc:.2f})', color=colors(i))
+
+    # Add diagonal line
+    plt.plot([0, 1], [0, 1], color='navy', lw=1, linestyle='--')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    # plt.title('Receiver Operating Characteristic (ROC) Curves for Multi-Class', fontsize=10)
+    plt.legend(loc="lower right")
+    plt.tight_layout()
+    plt.savefig('AUROC.png', dpi=300, bbox_inches="tight")
+
+
+
+    plt.show()
+
+
+# Confusion matrix plot (Accuracy sorted)
+def plot_conf_matrix_sorted(names, classifiers, X_train, y_train, X_test, y_test, nrows=4, ncols=3, fig_a=12, fig_b=12):
+    performance = []
+    for name, clf in zip(names, classifiers):
+        try:
+            clf.fit(X_train, y_train)
+            y_pred = clf.predict(X_test)
+            acc = accuracy_score(y_test, y_pred)
+            performance.append((name, clf, acc))
+        except Exception as e:
+            print(f"Classifier {name} failed: {e}")
+
+    performance_sorted = sorted(performance, key=lambda x: x[2], reverse=True)
+
+    num_classifiers = len(performance_sorted)
+    if nrows * ncols < num_classifiers:
+        raise ValueError(f"Number of subplots is less than the number of classifiers ({num_classifiers}). Please adjust nrows and ncols.")
+
+    fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(fig_a, fig_b))
+
+    axes = axes.flatten() if isinstance(axes, np.ndarray) else [axes]
+
+    for i, (name, clf, acc) in enumerate(performance_sorted):
+        y_pred = clf.predict(X_test)
+        cm = confusion_matrix(y_test, y_pred)
+        disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=np.unique(y_test))
+        disp.plot(ax=axes[i], cmap='Blues', colorbar=False)
+        axes[i].title.set_text(f'{name} (Acc: {acc:.2f})')
+
+    for j in range(i + 1, len(axes)):
+        fig.delaxes(axes[j])
+
+    plt.tight_layout()
+    plt.show()
+
+
+
+# score summary
+summary = score_summary(names, classifiers, X_train, y_train, X_test, y_test)
+
+summary = summary.sort_values(by='Accuracy', ascending=False)
+summary.style.background_gradient(cmap='coolwarm') \
+    .bar(subset=["Macro ROC_AUC"], color='#6495ED') \
+    .bar(subset=["Recall"], color='#ff355d') \
+    .bar(subset=["Precision"], color='lightseagreen') \
+    .bar(subset=["F1"], color='gold')
+
+# ROC_AUC curve
+roc_auc_curve(names, classifiers)
+
+# confusion matrix plot
+plot_conf_matrix_sorted(names, classifiers, X_train, y_train, X_test, y_test, nrows=4, ncols=3, fig_a=12, fig_b=12)
