@@ -1,0 +1,202 @@
+# Leave-One-Out cross validation
+def loocv_score_summary_with_mcc(names, classifiers, X_train, y_train):
+    cols = ["Classifier", "Mean Accuracy", "Mean Recall", "Mean Precision", "Mean F1", "Mean MCC"]
+    results = []
+
+    # ensure arrays are numpy
+    if isinstance(X_train, pd.DataFrame):
+        X_train = X_train.values
+    if isinstance(y_train, pd.Series):
+        y_train = y_train.values
+
+    loo = LeaveOneOut()
+
+    for name, clf in zip(names, classifiers):
+        try:
+            y_true = []
+            y_pred = []
+
+            for train_idx, test_idx in loo.split(X_train):
+                X_train_fold, X_test_fold = X_train[train_idx], X_train[test_idx]
+                y_train_fold, y_test_fold = y_train[train_idx], y_train[test_idx]
+
+                clf.fit(X_train_fold, y_train_fold)
+                pred = clf.predict(X_test_fold)
+
+                y_true.append(y_test_fold[0])
+                y_pred.append(pred[0])
+
+            acc = accuracy_score(y_true, y_pred) * 100
+            rec = recall_score(y_true, y_pred, average='macro', zero_division=0)
+            pre = precision_score(y_true, y_pred, average='macro', zero_division=0)
+            f1 = f1_score(y_true, y_pred, average='macro', zero_division=0)
+            mcc = matthews_corrcoef(y_true, y_pred)
+
+            results.append([name, acc, rec, pre, f1, mcc])
+
+        except Exception as e:
+            print(f"Classifier {name} failed during LOOCV: {e}")
+
+    return pd.DataFrame(results, columns=cols).round(2)
+
+loocv_summary = loocv_score_summary_with_mcc(names, classifiers, X_train, y_train)
+loocv_summary = loocv_summary.sort_values(by='Mean Accuracy', ascending=False)
+loocv_summary.style.background_gradient(cmap='coolwarm') \
+    .bar(subset=["Mean Recall"], color='#ff355d', vmin=0, vmax=1) \
+    .bar(subset=["Mean Precision"], color='lightseagreen', vmin=0, vmax=1) \
+    .bar(subset=["Mean F1"], color='gold', vmin=0, vmax=1) \
+    .bar(subset=["Mean MCC"], color='skyblue', vmin=0, vmax=1)
+
+# k fold cross validation
+          
+def kfold_score_summary_with_mcc(names, classifiers, X_train, y_train, n_splits=5):
+    cols = ["Classifier", "Mean Accuracy", "Mean Recall", "Mean Precision", "Mean F1", "Mean MCC"]
+    results = []
+
+    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+
+    for name, clf in zip(names, classifiers):
+        try:
+            acc_list, rec_list, pre_list, f1_list, mcc_list = [], [], [], [], []
+
+            for train_idx, test_idx in skf.split(X_train, y_train):
+                X_train_fold, X_test_fold = X_train[train_idx], X_train[test_idx]
+                y_train_fold, y_test_fold = y_train[train_idx], y_train[test_idx]
+
+                clf.fit(X_train_fold, y_train_fold)
+                y_pred = clf.predict(X_test_fold)
+
+                acc_list.append(accuracy_score(y_test_fold, y_pred) * 100)
+                rec_list.append(recall_score(y_test_fold, y_pred, average='macro', zero_division=0))
+                pre_list.append(precision_score(y_test_fold, y_pred, average='macro', zero_division=0))
+                f1_list.append(f1_score(y_test_fold, y_pred, average='macro', zero_division=0))
+                mcc_list.append(matthews_corrcoef(y_test_fold, y_pred))
+
+            results.append([
+                name,
+                np.mean(acc_list),
+                np.mean(rec_list),
+                np.mean(pre_list),
+                np.mean(f1_list),
+                np.mean(mcc_list)
+            ])
+
+        except Exception as e:
+            print(f"Classifier {name} failed during KFold: {e}")
+
+    return pd.DataFrame(results, columns=cols).round(2)
+
+
+kfold_summary = kfold_score_summary_with_mcc(names, classifiers, X_train, y_train, n_splits=3)
+kfold_summary = kfold_summary.sort_values(by='Mean Accuracy', ascending=False)
+kfold_summary.style.background_gradient(cmap='coolwarm') \
+    .bar(subset=["Mean Recall"], color='#ff355d', vmin=0, vmax=1) \
+    .bar(subset=["Mean Precision"], color='lightseagreen', vmin=0, vmax=1) \
+    .bar(subset=["Mean F1"], color='gold', vmin=0, vmax=1) \
+    .bar(subset=["Mean MCC"], color='skyblue', vmin=0, vmax=1)
+
+
+# permutation test                
+def permutation_score(names, classifiers, X_train, y_train):
+    """
+    Performs permutation testing for each classifier and returns the original score and p-value.
+    """
+ 
+    cols = ["Classifier", "Original Score (Accuracy)", "p-value"]
+    results_list = []
+
+    cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
+
+    for name, clf in zip(names, classifiers):
+
+        try:
+            print(f"Running permutation test for {name}...")
+
+            original_score, permutation_scores, p_value = permutation_test_score(
+                clf, X_train, y_train,
+                scoring="accuracy",
+                cv=cv,
+                n_permutations=100,
+                n_jobs=-1,
+                random_state=42
+            )
+
+            results_list.append({
+                "Classifier": name,
+                "Original Score (Accuracy)": original_score,
+                "p-value": p_value
+            })
+
+        except Exception as e:
+            print(f"Classifier {name} failed during permutation: {e}")
+
+    data_table = pd.DataFrame(results_list, columns=cols)
+    return np.round(data_table, 4)
+
+
+permutation_summary = permutation_score(names, classifiers, X_train, y_train)
+permutation_summary = permutation_summary.sort_values(by='p-value', ascending=True)
+
+print(permutation_summary)
+
+
+# Bootstrap
+def bootstrap_evaluation(clf, X_train, y_train, n_iterations=100):
+    scores = []
+    for _ in range(n_iterations):
+        indices = np.random.choice(len(X_train), len(X_train), replace=True)
+        X_sample = X_train[indices]
+        y_sample = y_train[indices]
+        clf.fit(X_sample, y_sample)
+        scores.append(clf.score(X_test, y_test))  # Or X_sample/y_sample if needed
+    return np.mean(scores), np.std(scores)
+
+
+def simple_bootstrap_evaluation(names, classifiers, X_train, y_train, n_iterations=100):
+    X = X_train.values if isinstance(X_train, pd.DataFrame) else X_train
+    y = y_train.values if isinstance(y_train, pd.Series) else y_train
+
+    n_classes = len(np.unique(y))
+    final_results = {}
+
+    for name, clf in zip(names, classifiers):
+        print(f"Evaluating {name}...")
+        iteration_scores = {'accuracy': [], 'recall': [], 'precision': [], 'f1': [], 'mcc': []}
+
+        try:
+            for i in range(n_iterations):
+                all_indices = np.arange(len(X))
+                train_indices = resample(all_indices, replace=True, n_samples=len(X), random_state=i)
+                oob_indices = np.setdiff1d(all_indices, np.unique(train_indices))
+
+                if len(oob_indices) == 0 or len(np.unique(y[oob_indices])) < n_classes:
+                    continue
+
+                X_train, y_train = X[train_indices], y[train_indices]
+                X_val, y_val = X[oob_indices], y[oob_indices]
+
+                clf.fit(X_train, y_train)
+                y_pred = clf.predict(X_val)
+
+                iteration_scores['accuracy'].append(accuracy_score(y_val, y_pred))
+                iteration_scores['recall'].append(recall_score(y_val, y_pred, average='macro', zero_division=0))
+                iteration_scores['precision'].append(precision_score(y_val, y_pred, average='macro', zero_division=0))
+                iteration_scores['f1'].append(f1_score(y_val, y_pred, average='macro', zero_division=0))
+                iteration_scores['mcc'].append(matthews_corrcoef(y_val, y_pred))
+
+            final_results[name] = {
+                'Mean Accuracy': np.mean(iteration_scores['accuracy']) * 100,
+                'Std Accuracy': np.std(iteration_scores['accuracy']) * 100,
+                'Mean Recall': np.mean(iteration_scores['recall']),
+                'Mean Precision': np.mean(iteration_scores['precision']),
+                'Mean F1': np.mean(iteration_scores['f1']),
+                'Mean MCC': np.mean(iteration_scores['mcc'])
+            }
+        except Exception as e:
+            print(f"Classifier {name} failed during bootstrap: {e}")
+
+    results_df = pd.DataFrame.from_dict(final_results, orient='index')
+    return np.round(results_df, 2)
+
+bootstrap_summary_simple = simple_bootstrap_evaluation(names, classifiers, X_train, y_train)
+print(bootstrap_summary_simple)
